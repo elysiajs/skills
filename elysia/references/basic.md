@@ -7,13 +7,13 @@
 import { Elysia } from 'elysia'
 
 new Elysia()
-  .get('/', () => 'GET')
-  .post('/', () => 'POST')
-  .put('/', () => 'PUT')
-  .patch('/', () => 'PATCH')
-  .delete('/', () => 'DELETE')
-  .options('/', () => 'OPTIONS')
-  .head('/', () => 'HEAD')
+  .get('/', 'GET')
+  .post('/', 'POST')
+  .put('/', 'PUT')
+  .patch('/', 'PATCH')
+  .delete('/', 'DELETE')
+  .options('/', 'OPTIONS')
+  .head('/', 'HEAD')
 ```
 
 ### Path Parameters

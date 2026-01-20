@@ -1,15 +1,15 @@
 ---
 name: elysiajs
-description: Expert knowledge for building type-safe, high-performance backend servers with ElysiaJS. Covers routing, validation, authentication, plugins (CORS, OpenAPI, JWT, Static), integrations (Eden, Next.js, Drizzle, OpenTelemetry), WebSocket, testing, and deployment. Use when creating/modifying Elysia routes, setting up validation, implementing auth, adding plugins, or deploying to production.
+description: Expert knowledge for building type-safe, high-performance backend servers with ElysiaJS.
 ---
 
 # ElysiaJS Development Skill
 
-Always consult elysiajs.com/llms.txt for code examples and latest API.
+Always consult [elysiajs.com/llms.txt](https://elysiajs.com/llms.txt) for code examples and latest API.
 
 ## Overview
 
-ElysiaJS is a Bun-first TypeScript framework for building type-safe, high-performance backend servers. This skill provides comprehensive guidance for developing with Elysia, including routing, validation, authentication, plugins, integrations, and deployment.
+ElysiaJS is a TypeScript framework for building Bun-first (but not limited to Bun) type-safe, high-performance backend servers. This skill provides comprehensive guidance for developing with Elysia, including routing, validation, authentication, plugins, integrations, and deployment.
 
 ## When to Use This Skill
 
@@ -30,17 +30,19 @@ Trigger this skill when the user asks to:
 import { Elysia, t } from 'elysia'
 
 const app = new Elysia()
-  .get('/', () => 'Hello World')
-  .post('/user', ({ body }) => body, {
-    body: t.Object({
-      name: t.String(),
-      age: t.Number()
+  	.get('/', () => 'Hello World')
+   	.post('/user', ({ body }) => body, {
+    	body: t.Object({
+      		name: t.String(),
+        	age: t.Number()
+     	})
     })
-  })
-  .listen(3000)
+    .listen(3000)
 ```
 
 ### Project Structure (Recommended)
+Elysia takes an unopinionated approach but based on user request. But without any specific preference, we recommend a feature-based and domain driven folder structure where each feature has its own folder containing controllers, services, and models.
+
 ```
 src/
 ├── index.ts              # Main server entry
@@ -60,332 +62,403 @@ public/                   # Static files (if using static plugin)
 test/                     # Unit tests
 ```
 
+Each file has its own responsibility as follows:
+- **Controller (index.ts)**: Handle HTTP routing, request validation, and cookie.
+- **Service (service.ts)**: Handle business logic, decoupled from Elysia controller if possible.
+- **Model (model.ts)**: Define the data structure and validation for the request and response.
+
 ## Core Concepts
 
-### 1. Routing & Validation
+## Key Concept
+Elysia has a every important concepts that you need to understand to use.
 
-**Basic Route:**
-```typescript
-.get('/user/:id', ({ params: { id } }) => id)
-```
+### Encapsulation
+Elysia lifecycle methods are **encapsulated** to its own instance only.
 
-**With TypeBox Validation:**
-```typescript
-.post('/user', ({ body }) => body, {
-  body: t.Object({
-    name: t.String(),
-    email: t.String({ format: 'email' }),
-    age: t.Number({ minimum: 0 })
-  }),
-  response: {
-    201: t.Object({
-      id: t.String(),
-      name: t.String()
-    })
-  }
-})
-```
+Which means if you create a new instance, it will not share the lifecycle methods with others.
 
-**Alternative: Zod/Valibot (Standard Schema):**
-```typescript
-import { z } from 'zod'
-
-.post('/user', ({ body }) => body, {
-  body: z.object({
-    name: z.string(),
-    email: z.string().email()
-  })
-})
-```
-
-### 2. Common Plugins
-
-**CORS:**
-```typescript
-import { cors } from '@elysiajs/cors'
-
-.use(cors({
-  origin: 'localhost:3000',
-  credentials: true
-}))
-```
-
-**Static Files (public folder):**
-```typescript
-import { staticPlugin } from '@elysiajs/static'
-
-.use(staticPlugin({
-  prefix: '/',        // Optional: default is '/public'
-  assets: 'public'    // Folder name
-}))
-```
-
-**OpenAPI Documentation:**
-```typescript
-import { openapi } from '@elysiajs/openapi'
-
-.use(openapi({
-  documentation: {
-    info: {
-      title: 'My API',
-      version: '1.0.0'
-    }
-  }
-}))
-```
-
-**JWT Authentication:**
-```typescript
-import { jwt } from '@elysiajs/jwt'
-
-.use(jwt({
-  name: 'jwt',
-  secret: process.env.JWT_SECRET!
-}))
-.get('/protected', async ({ jwt, headers, status }) => {
-  const token = headers.authorization?.replace('Bearer ', '')
-  const user = await jwt.verify(token)
-  
-  if (!user) return status(401)
-  
-  return user
-})
-```
-
-### 3. Authentication Patterns
-
-**Macro for Reusable Auth:**
-```typescript
-.macro({
-  auth: {
-    cookie: t.Object({
-      session: t.String()
-    }),
-    beforeHandle({ cookie: { session }, status }) {
-      if (!session.value) return status(401)
-    }
-  }
-})
-.get('/profile', ({ cookie }) => cookie.session.value, {
-  auth: true  // Applies the auth macro
-})
-```
-
-**Guard for Multiple Routes:**
-```typescript
-.guard({
-  beforeHandle({ headers, status }) {
-    if (!headers.authorization) return status(401)
-  }
-}, app => app
-  .get('/profile', () => 'Protected')
-  .get('/settings', () => 'Protected')
-)
-```
-
-### 4. Integration Examples
-
-**Eden Treaty (End-to-end Type Safety):**
-```typescript
-// Server
-export const app = new Elysia()
-  .get('/user/:id', ({ params: { id } }) => ({ id, name: 'John' }))
-
-export type App = typeof app
-
-// Client
-import { treaty } from '@elysiajs/eden'
-import type { App } from './server'
-
-const api = treaty<App>('localhost:3000')
-const { data } = await api.user({ id: '123' }).get()
-```
-
-**Next.js Integration:**
-```typescript
-// app/api/[[...slugs]]/route.ts
+```ts
 import { Elysia } from 'elysia'
 
-const app = new Elysia({ prefix: '/api' })
-  .get('/', () => 'Hello from Next.js')
+const profile = new Elysia()
+	.onBeforeHandle(({ cookie }) => {
+		throwIfNotSignIn(cookie)
+	})
+	.get('/profile', () => 'Hi there!')
 
-export const GET = app.fetch
-export const POST = app.fetch
+const app = new Elysia()
+	.use(profile)
+	// This will NOT have sign in check
+	.patch('/rename', ({ body }) => updateProfile(body))
 ```
 
-**Drizzle ORM:**
+In above example, the `isSignIn` check will only apply to `profile` but not `app`.
+
+**Elysia isolate lifecycle by default** unless explicitly stated. This is similar to **export** in JavaScript, where you need to export the function to make it available outside the module.
+
+To "export" the lifecycle to other instances, you must add specify the scope.
+
+```ts
+import { Elysia } from 'elysia'
+
+const profile = new Elysia()
+	.onBeforeHandle(
+		{ as: 'global' }, // [!code ++]
+		({ cookie }) => {
+			throwIfNotSignIn(cookie)
+		}
+	)
+	.get('/profile', () => 'Hi there!')
+
+const app = new Elysia()
+	.use(profile)
+	// This has sign in check
+	.patch('/rename', ({ body }) => updateProfile(body))
+```
+
+Casting lifecycle to **"global"** will export lifecycle to **every instance**.
+
+### Encapsulation scope level
+Elysia has 3 levels of scope as the following:
+
+Scope type are as the following:
+1. **local** (default) - apply to only current instance and descendant only
+2. **scoped** - apply to parent, current instance and descendants
+3. **global** - apply to all instance that apply the plugin (all parents, current, and descendants)
+
+Let's review what each scope type does by using the following example:
 ```typescript
-import { drizzle } from 'drizzle-orm/bun-sqlite'
+import { Elysia } from 'elysia'
 
-const db = drizzle(/* config */)
 
-.decorate('db', db)
-.get('/users', ({ db }) => db.select().from(users))
+const child = new Elysia()
+    .get('/child', 'hi')
+
+const current = new Elysia()
+	// ? Value based on table value provided below
+    .onBeforeHandle({ as: 'local' }, () => { // [!code ++]
+        console.log('hi')
+    })
+    .use(child)
+    .get('/current', 'hi')
+
+const parent = new Elysia()
+    .use(current)
+    .get('/parent', 'hi')
+
+const main = new Elysia()
+    .use(parent)
+    .get('/main', 'hi')
 ```
 
-**Better Auth:**
+By changing the `type` value, the result should be as follows:
+
+| type       | child | current | parent | main |
+| ---------- | ----- | ------- | ------ | ---- |
+| local      | ✅    | ✅      | ❌      | ❌   |
+| scoped     | ✅    | ✅      | ✅      | ❌   |
+| global     | ✅    | ✅      | ✅      | ✅   |
+
+### Descendant
+
+By default plugin will **apply hook to itself and descendants** only.
+
+If the hook is registered in a plugin, instances that inherit the plugin will **NOT** inherit hooks and schema.
+
 ```typescript
-import { betterAuth } from 'better-auth'
+import { Elysia } from 'elysia'
 
-const auth = betterAuth({ /* config */ })
+const plugin = new Elysia()
+    .onBeforeHandle(() => {
+        console.log('hi')
+    })
+    .get('/child', 'log hi')
 
-.mount('/api/auth', auth.handler)
+const main = new Elysia()
+    .use(plugin)
+    .get('/parent', 'not log hi')
 ```
 
-**OpenTelemetry:**
+To apply hook to globally, we need to specify hook as global.
 ```typescript
-import { opentelemetry } from '@elysiajs/opentelemetry'
+import { Elysia } from 'elysia'
 
-.use(opentelemetry({
-  serviceName: 'my-service'
-}))
+const plugin = new Elysia()
+    .onBeforeHandle(() => {
+        return 'hi'
+    })
+    .get('/child', 'child')
+    .as('scoped')
+
+const main = new Elysia()
+    .use(plugin)
+    .get('/parent', 'parent')
 ```
 
-### 5. WebSocket
+### Everything is a component
+
+Every Elysia instance is a component.
+
+A component is a plugin that could plug into other instances.
+
+It could be a router, a store, a service, or anything else.
+
+```ts
+import { Elysia } from 'elysia'
+
+const store = new Elysia()
+	.state({ visitor: 0 })
+
+const router = new Elysia()
+	.use(store)
+	.get('/increase', ({ store }) => store.visitor++)
+
+const app = new Elysia()
+	.use(router)
+	.get('/', ({ store }) => store)
+	.listen(3000)
+```
+
+This forces you to break down your application into small pieces, making it easy for you to add or remove features.
+
+### Method Chaining
+Elysia code should **ALWAYS** use method chaining, this is **important to ensure type safety**.
+
+Every method in Elysia returns a new type reference, without using method chaining, Elysia doesn't save these new types, leading to no type inference.
+
+Don't do:
+```typescript
+// Don't do
+import { Elysia } from 'elysia'
+
+const app = new Elysia()
+app.state('build', 1)
+
+// Type error "build" doesn't exists
+app.get('/', ({ store: { build } }) => build)
+app.listen(3000)
+```
+
+Do
+```typescript
+import { Elysia } from 'elysia'
+
+const app = new Elysia()
+	.state('build', 1)
+	.get('/', ({ store: { build } }) => build)
+	.listen(3000)
+```
+
+Always use method chaining to provide an accurate type inference.
+
+## Dependency
+Elysia by design, is compose of multiple mini Elysia apps which can run **independently** like a microservice that communicate with each other.
+
+Each Elysia instance is independent and **can run as a standalone server**.
+
+When an instance need to use another instance's service, you **must explicitly declare the dependency**.
+
+```ts
+import { Elysia } from 'elysia'
+
+const auth = new Elysia()
+	.decorate('Auth', Auth)
+	.model(Auth.models)
+
+// Don't
+new Elysia()
+ 	// 'auth' is missing
+	.get('/', ({ Auth }) => Auth.getProfile())
+
+// Do
+new Elysia()
+	.use(auth)
+	// auth is required to use Auth's service
+	.get('/profile', ({ Auth }) => Auth.getProfile())
+```
+
+This is similar to **Dependency Injection** where each instance must declare its dependencies.
+
+This approach force you to be explicit about dependencies allowing better tracking, modularity.
+
+### Deduplication
+
+By default, each plugin will be re-executed **every time** applying to another instance.
+
+To prevent this, Elysia can deduplicate lifecycle with **an unique identifier** using `name` and optional `seed` property.
+
+```ts
+import { Elysia } from 'elysia'
+
+const ip = new Elysia({ name: 'ip' })
+	.derive(
+		{ as: 'global' },
+		({ server, request }) => ({
+			ip: server?.requestIP(request)
+		})
+	)
+	.get('/ip', ({ ip }) => ip)
+
+const router1 = new Elysia()
+	.use(ip)
+	.get('/ip-1', ({ ip }) => ip)
+
+const router2 = new Elysia()
+	.use(ip)
+	.get('/ip-2', ({ ip }) => ip)
+
+const server = new Elysia()
+	.use(router1)
+	.use(router2)
+```
+
+Adding the `name` and optional `seed` to the instance will make it a unique identifier prevent it from being called multiple times.
+
+### Global vs Explicit Dependency
+
+There are some case that global dependency make more sense than an explicit one.
+
+**Global** plugin example:
+- **Plugin that doesn't add types** - eg. cors, compress, helmet
+- Plugin that add global lifecycle that no instance should have control over - eg. tracing, logging
+
+Example use cases:
+- OpenAPI/Open - Global document
+- OpenTelemetry - Global tracer
+- Logging - Global logger
+
+In case like this, it make more sense to create it as global dependency instead of applying it to every instance.
+
+However, if your dependency doesn't fit into these categories, it's recommended to use **explicit dependency** instead.
+
+**Explicit dependency** example:
+- **Plugin that add types** - eg. macro, state, model
+- Plugin that add business logic that instance can interact with - eg. Auth, Database
+
+Example use cases:
+- State management - eg. Store, Session
+- Data modeling - eg. ORM, ODM
+- Business logic - eg. Auth, Database
+- Feature module - eg. Chat, Notification
+
+### Order of code
+
+The order of Elysia's life-cycle code is very important.
+
+Because event will only apply to routes **after** it is registered.
+
+If you put the onError before plugin, plugin will not inherit the onError event.
 
 ```typescript
-.ws('/chat', {
-  message(ws, message) {
-    ws.send(message)
-  },
-  body: t.String(),
-  response: t.String()
-})
+import { Elysia } from 'elysia'
+
+new Elysia()
+ 	.onBeforeHandle(() => {
+        console.log('1')
+    })
+	.get('/', () => 'hi')
+    .onBeforeHandle(() => {
+        console.log('2')
+    })
+    .listen(3000)
 ```
 
-### 6. Unit Testing
+Console should log the following:
 
-**Basic Test:**
-```typescript
-// test/auth.test.ts
-import { describe, expect, it } from 'bun:test'
-import { app } from '../src/modules/auth'
-
-describe('Auth Module', () => {
-  it('should return 401 for unauthenticated requests', async () => {
-    const res = await app.handle(
-      new Request('http://localhost/profile')
-    )
-    
-    expect(res.status).toBe(401)
-  })
-})
-```
-
-**With Eden Treaty:**
-```typescript
-import { treaty } from '@elysiajs/eden'
-
-const api = treaty(app)
-
-it('should return user profile', async () => {
-  const { data, error } = await api.profile.get()
-  
-  expect(error).toBeNull()
-  expect(data).toEqual({ name: 'John' })
-})
-```
-
-### 7. Deployment
-
-**Compile to Binary:**
 ```bash
-bun build \
-  --compile \
-  --minify-whitespace \
-  --minify-syntax \
-  --target bun \
-  --outfile server \
-  src/index.ts
+1
 ```
 
-**Docker:**
-```dockerfile
-FROM oven/bun:1 AS build
-WORKDIR /app
+Notice that it doesn't log **2**, because the event is registered after the route so it is not applied to the route.
 
-COPY package.json bun.lock ./
-RUN bun install
+Learn more about this in [order of code](/essential/life-cycle.html#order-of-code).
 
-COPY ./src ./src
-ENV NODE_ENV=production
+### Type Inference
+Elysia has a complex type system that allows you to infer types from the instance.
 
-RUN bun build --compile --outfile server src/index.ts
+```ts
+import { Elysia, t } from 'elysia'
 
-FROM gcr.io/distroless/base
-WORKDIR /app
-COPY --from=build /app/server server
-
-ENV NODE_ENV=production
-CMD ["./server"]
-EXPOSE 3000
+const app = new Elysia()
+	.post('/', ({ body }) => body, {
+		body: t.Object({
+			name: t.String()
+		})
+	})
 ```
 
-## Workflow Decision Tree
+You should **always use an inline function** to provide an accurate type inference.
 
+If you need to apply a separate function, eg. MVC's controller pattern, it's recommended to destructure properties from inline function to prevent unnecessary type inference as follows:
+
+```ts
+import { Elysia, t } from 'elysia'
+
+abstract class Controller {
+	static greet({ name }: { name: string }) {
+		return 'hello ' + name
+	}
+}
+
+const app = new Elysia()
+	.post('/', ({ body }) => Controller.greet(body), {
+		body: t.Object({
+			name: t.String()
+		})
+	})
 ```
-User Request
-│
-├─ "Create route/API endpoint"
-│   ├─ Check if validation needed → Add schema
-│   ├─ Check if auth needed → Add macro/guard
-│   └─ Return response
-│
-├─ "Add plugin" (CORS, OpenAPI, JWT, Static)
-│   └─ Import plugin → Configure → Apply with .use()
-│
-├─ "Setup authentication"
-│   ├─ Macro pattern (reusable auth check)
-│   ├─ Guard pattern (multiple routes)
-│   └─ JWT plugin (token-based)
-│
-├─ "Integrate with external service"
-│   ├─ Eden (type-safe client)
-│   ├─ Next.js (API routes)
-│   ├─ Drizzle (database)
-│   ├─ Better Auth
-│   └─ OpenTelemetry (monitoring)
-│
-├─ "Add WebSocket"
-│   └─ Define .ws() route with message handler
-│
-├─ "Create unit tests"
-│   └─ Use app.handle() or Eden treaty
-│
-└─ "Deploy to production"
-    ├─ Compile to binary
-    └─ Docker containerization
+
+### TypeScript
+We can get a type definitions of every Elysia/TypeBox's type by accessing `static` property as follows:
+
+```ts
+import { t } from 'elysia'
+
+const MyType = t.Object({
+	hello: t.Literal('Elysia')
+})
+
+type MyType = typeof MyType.static
 ```
+
+This allows Elysia to infer and provide type automatically, reducing the need to declare duplicate schema
+
+A single Elysia/TypeBox schema can be used for:
+- Runtime validation
+- Data coercion
+- TypeScript type
+- OpenAPI schema
+
+This allows us to make a schema as a **single source of truth**.
 
 ## Resources
 
 ### references/
 Detailed documentation split by topic:
-- `auth.md` - Authentication patterns (macros, guards)
+- `basic.md` - Basic Elysia building block examples: Routing, Validation, Handlers
 - `deployment.md` - Production setup
-- `integrations.md` - Eden, Next.js, Drizzle, OpenTelemetry
-- `plugins.md` - CORS, OpenAPI, JWT, Static
-- `routes.md` - Routing, validation, handlers
+- `eden.md` - Elysia's type safe RPC client similar to tRPC
+- `guard.md` - Setting mulitple validation schema and lifecycle
+- `macro.md` - Composable Elysia function
 - `testing.md` - Unit tests with examples
+- `validation.md` - Setup input/output validation
 - `websocket.md` - Real-time features
 
-### assets/ (optional)
-Boilerplate templates:
-- `basic-server.ts` - Starter template
-- `auth-server.ts` - Server with JWT auth
-- `api-with-db.ts` - Server with Drizzle ORM
+### examples/ (optional)
+- `basic.ts` - Basic Elysia example
+- `body-parser.ts` - Custom body parser example via `.onParse`
+- `complex.ts` - Comprehensive usage of Elysia server
+- `cookie.ts` - Setting cookie
+- `error.ts` - Error handling
+- `file.ts` - Returning local file from server
+- `guard.ts` - Setting mulitple validation schema and lifecycle
+- `map-response.ts` - Custom response mapper
+- `redirect.ts` - Redirect response
+- `rename.ts` - Rename context's property 
+- `schema.ts` - Setup validation
+- `state.ts` - Setup global state
+- `upload-file.ts` - File upload with validation
+- `websocket.ts` - Web Socket for realtime communication
 
-## Common Patterns Quick Reference
-
-| Task | Code |
-|------|------|
-| Basic route | `.get('/', () => 'Hello')` |
-| Path params | `.get('/user/:id', ({ params }) => params.id)` |
-| Validation | `body: t.Object({ name: t.String() })` |
-| CORS | `.use(cors({ origin: 'localhost:3000' }))` |
-| Static files | `.use(staticPlugin())` |
-| OpenAPI | `.use(openapi())` |
-| JWT | `.use(jwt({ secret: '...' }))` |
-| Auth macro | See Authentication Patterns section |
-| WebSocket | `.ws('/path', { message(ws, msg) {} })` |
-| Unit test | `app.handle(new Request('...'))` |
+### patterns/ (optional)
+- `patterns/mvc.md` - Using Elysia with MVC patterns
