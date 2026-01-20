@@ -7,11 +7,31 @@ Elysia provides a schema to validate data out of the box to ensure that the data
 import { Elysia, t } from 'elysia'
 
 new Elysia()
-    .get('/id/:id', ({ params: { id } }) => id, {
-        params: t.Object({
-            id: t.Number()
-        })
+	.get('/id/:id', ({ params: { id } }) => {
+   		if(id > 1_000_000) return status(404, 'Not Found')
+     
+     	return id
+    }, {
+    	params: t.Object({
+     		id: t.Number({
+       			minimum: 1
+       		})
+     	}),
+     	response: {
+      		200: t.Number(),
+        	404: t.Literal('Not Found')
+      	}
     })
+	.post('/file', () => {
+		
+	}, {
+		body: t.Object({
+			image: t.File({
+				type: ['image/jpeg', 'image/png'],
+				maxSize: '1m'
+			})
+		})
+	})
     .listen(3000)
 ```
 
@@ -692,10 +712,6 @@ const MyType = t.Object({
 type MyType = typeof MyType.static
 ````
 
-
-
-
-
 This allows Elysia to infer and provide type automatically, reducing the need to declare duplicate schema
 
 A single Elysia/TypeBox schema can be used for:
@@ -705,3 +721,241 @@ A single Elysia/TypeBox schema can be used for:
 - OpenAPI schema
 
 This allows us to make a schema as a **single source of truth**.
+
+## ElysiaJS: TypeBox Validation (Elysia.t)
+
+## Overview
+
+Elysia.t = TypeBox with server-side pre-configuration + HTTP-specific types
+
+**TypeBox API mirrors TypeScript syntax** but provides runtime validation
+
+## Basic Types
+
+| TypeBox | TypeScript | Example Value |
+|---------|------------|---------------|
+| `t.String()` | `string` | `"hello"` |
+| `t.Number()` | `number` | `42` |
+| `t.Boolean()` | `boolean` | `true` |
+| `t.Array(t.Number())` | `number[]` | `[1, 2, 3]` |
+| `t.Object({ x: t.Number() })` | `{ x: number }` | `{ x: 10 }` |
+| `t.Null()` | `null` | `null` |
+| `t.Literal(42)` | `42` | `42` |
+
+## Attributes (JSON Schema 7)
+
+```ts
+// Email format
+t.String({ format: 'email' })
+
+// Number constraints
+t.Number({ minimum: 10, maximum: 100 })
+
+// Array constraints
+t.Array(t.Number(), {
+  minItems: 1,  // min items
+  maxItems: 5   // max items
+})
+
+// Object - allow extra properties
+t.Object(
+  { x: t.Number() },
+  { additionalProperties: true }  // default: false
+)
+```
+
+## Common Patterns
+
+### Union (Multiple Types)
+```ts
+t.Union([t.String(), t.Number()])
+// type: string | number
+// values: "Hello" or 123
+```
+
+### Optional (Field Optional)
+```ts
+t.Object({
+  x: t.Number(),
+  y: t.Optional(t.Number())  // can be undefined
+})
+// type: { x: number, y?: number }
+// value: { x: 123 } or { x: 123, y: 456 }
+```
+
+### Partial (All Fields Optional)
+```ts
+t.Partial(t.Object({
+  x: t.Number(),
+  y: t.Number()
+}))
+// type: { x?: number, y?: number }
+// value: {} or { y: 123 } or { x: 1, y: 2 }
+```
+
+## Elysia-Specific Types
+
+### UnionEnum (One of Values)
+```ts
+t.UnionEnum(['rapi', 'anis', 1, true, false])
+```
+
+### File (Single File Upload)
+```ts
+t.File({
+  type: 'image',           // or ['image', 'video']
+  minSize: '1k',           // 1024 bytes
+  maxSize: '5m'            // 5242880 bytes
+})
+```
+
+**File unit suffixes**:
+- `m` = MegaByte (1048576 bytes)
+- `k` = KiloByte (1024 bytes)
+
+### Files (Multiple Files)
+```ts
+t.Files()  // extends File + array
+```
+
+### Cookie (Cookie Jar)
+```ts
+t.Cookie({
+  name: t.String()
+}, {
+  secrets: 'secret-key'  // or ['key1', 'key2'] for rotation
+})
+```
+
+### Nullable (Allow null)
+```ts
+t.Nullable(t.String())
+// type: string | null
+```
+
+### MaybeEmpty (Allow null + undefined)
+```ts
+t.MaybeEmpty(t.String())
+// type: string | null | undefined
+```
+
+### Form (FormData Validation)
+```ts
+t.Form({
+  someValue: t.File()
+})
+// Syntax sugar for t.Object with FormData support
+```
+
+### UInt8Array (Buffer → Uint8Array)
+```ts
+t.UInt8Array()
+// For binary file uploads with arrayBuffer parser
+```
+
+### ArrayBuffer (Buffer → ArrayBuffer)
+```ts
+t.ArrayBuffer()
+// For binary file uploads with arrayBuffer parser
+```
+
+### ObjectString (String → Object)
+```ts
+t.ObjectString()
+// Accepts: '{"x":1}' → parses to { x: 1 }
+// Use in: query string, headers, FormData
+```
+
+### BooleanString (String → Boolean)
+```ts
+t.BooleanString()
+// Accepts: 'true'/'false' → parses to boolean
+// Use in: query string, headers, FormData
+```
+
+### Numeric (String/Number → Number)
+```ts
+t.Numeric()
+// Accepts: '123' or 123 → transforms to 123
+// Use in: path params, query string
+```
+
+## Elysia Behavior Differences from TypeBox
+
+### 1. Optional Behavior
+
+In Elysia, `t.Optional` makes **entire route parameter** optional (not object field):
+
+```ts
+.get('/optional', ({ query }) => query, {
+  query: t.Optional(  // makes query itself optional
+    t.Object({ name: t.String() })
+  )
+})
+```
+
+**Different from TypeBox**: TypeBox uses Optional for object fields only
+
+### 2. Number → Numeric Auto-Conversion
+
+**Route schema only** (not nested objects):
+
+```ts
+.get('/:id', ({ id }) => id, {
+  params: t.Object({
+    id: t.Number()  // ✅ Auto-converts to t.Numeric()
+  }),
+  body: t.Object({
+    id: t.Number()  // ❌ NOT converted (stays t.Number())
+  })
+})
+
+// Outside route schema
+t.Number()  // ❌ NOT converted
+```
+
+**Why**: HTTP headers/query/params always strings. Auto-conversion parses numeric strings.
+
+### 3. Boolean → BooleanString Auto-Conversion
+
+Same as Number → Numeric:
+
+```ts
+.get('/:active', ({ active }) => active, {
+  params: t.Object({
+    active: t.Boolean()  // ✅ Auto-converts to t.BooleanString()
+  }),
+  body: t.Object({
+    active: t.Boolean()  // ❌ NOT converted
+  })
+})
+```
+
+## Usage Pattern
+
+```ts
+import { Elysia, t } from 'elysia'
+
+new Elysia()
+  .post('/', ({ body }) => `Hello ${body}`, {
+    body: t.String()  // validates body is string
+  })
+  .listen(3000)
+```
+
+**Validation flow**:
+1. Request arrives
+2. Schema validates against HTTP body/params/query/headers
+3. If valid → handler executes
+4. If invalid → Error Life Cycle
+
+## Notes
+
+[Inference] Based on docs:
+- TypeBox mirrors TypeScript but adds runtime validation
+- Elysia.t extends TypeBox with HTTP-specific types
+- Auto-conversion (Number→Numeric, Boolean→BooleanString) only for route schemas
+- Use `t.Optional` for optional route params (different from TypeBox behavior)
+- File validation supports unit suffixes ('1k', '5m')
+- ObjectString/BooleanString for parsing strings in query/headers
+- Cookie supports key rotation with array of secrets

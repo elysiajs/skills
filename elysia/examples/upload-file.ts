@@ -3,7 +3,9 @@ import { Elysia, t } from 'elysia'
 const app = new Elysia()
 	.post('/single', ({ body: { file } }) => file, {
 		body: t.Object({
-			file: t.File()
+			file: t.File({
+				maxSize: '1m'
+			})
 		})
 	})
 	.post(
@@ -16,11 +18,3 @@ const app = new Elysia()
 		}
 	)
 	.listen(3000)
-
-const { request } = upload('/single', {
-	file: 'millenium.jpg'
-})
-
-app.handle(request)
-	.then((r) => r.text())
-	.then(console.log)

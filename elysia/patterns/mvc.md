@@ -1,5 +1,20 @@
-## MVC pattern
+# MVC pattern
 This file contains a guideline for using Elysia with MVC or Model View Controller patterns
+
+- Controller:
+	- Prefers Elysia as a controller for HTTP dependant
+	- For non HTTP dependent, prefers service instead unless explicitly asked
+	- Use `onError` to handle local custom errors
+	- Register Model to Elysia instance via `Elysia.models({ ...models })` and prefix model by namespace `Elysia.prefix('model', 'Namespace.')
+	- Prefers Reference Model by name provided by Elysia instead of using an actual `Model.name`
+- Service:
+	- Prefers class (or abstract class if possible)
+	- Prefers interface/type derive from `Model`
+	- Return `status` (`import { status } from 'elysia'`) for error
+	- Prefers `return Error` instead of `throw Error`
+- Models:
+	- Always export validation model and type of validation model
+	- Custom Error should be in contains in Model
 
 ## Controller
 Due to type soundness of Elysia, it's not recommended to use a traditional controller class that is tightly coupled with Elysia's `Context` because:
@@ -330,7 +345,7 @@ const models = AuthModel.models
 ```
 
 ### Model Injection
-Though this is optional, if you are strictly following MVC pattern, you may want to inject like a service into a controller. We recommended using [Elysia reference model](/essential/validation#reference-model)
+Though this is optional, if you are strictly following MVC pattern, you may want to inject like a service into a controller. We recommended using Elysia reference model
 
 Using Elysia's model reference
 ```typescript twoslash

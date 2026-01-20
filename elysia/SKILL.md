@@ -27,7 +27,7 @@ Trigger this skill when the user asks to:
 
 ### Basic Server
 ```typescript
-import { Elysia, t } from 'elysia'
+import { Elysia, t, status } from 'elysia'
 
 const app = new Elysia()
   	.get('/', () => 'Hello World')
@@ -36,6 +36,21 @@ const app = new Elysia()
       		name: t.String(),
         	age: t.Number()
      	})
+    })
+    .get('/id/:id', ({ params: { id } }) => {
+   		if(id > 1_000_000) return status(404, 'Not Found')
+     
+     	return id
+    }, {
+    	params: t.Object({
+     		id: t.Number({
+       			minimum: 1
+       		})
+     	}),
+     	response: {
+      		200: t.Number(),
+        	404: t.Literal('Not Found')
+      	}
     })
     .listen(3000)
 ```
@@ -66,6 +81,24 @@ Each file has its own responsibility as follows:
 - **Controller (index.ts)**: Handle HTTP routing, request validation, and cookie.
 - **Service (service.ts)**: Handle business logic, decoupled from Elysia controller if possible.
 - **Model (model.ts)**: Define the data structure and validation for the request and response.
+
+## Best Practice
+Elysia is unopinionated on design pattern, but if not provided, we can relies on MVC pattern pair with feature based folder structure.
+
+- Controller:
+	- Prefers Elysia as a controller for HTTP dependant controller
+	- For non HTTP dependent, prefers service instead unless explicitly asked
+	- Use `onError` to handle local custom errors
+	- Register Model to Elysia instance via `Elysia.models({ ...models })` and prefix model by namespace `Elysia.prefix('model', 'Namespace.')
+	- Prefers Reference Model by name provided by Elysia instead of using an actual `Model.name`
+- Service:
+	- Prefers class (or abstract class if possible)
+	- Prefers interface/type derive from `Model`
+	- Return `status` (`import { status } from 'elysia'`) for error
+	- Prefers `return Error` instead of `throw Error`
+- Models:
+	- Always export validation model and type of validation model
+	- Custom Error should be in contains in Model
 
 ## Core Concepts
 
@@ -432,16 +465,22 @@ A single Elysia/TypeBox schema can be used for:
 This allows us to make a schema as a **single source of truth**.
 
 ## Resources
+Use the following references as needed.
+
+It's recommended to checkout `route.md` for as it contains the most important foundation building blocks with examples.
+
+`plugin.md` and `validation.md` is important as well but can be check as needed.
 
 ### references/
 Detailed documentation split by topic:
-- `basic.md` - Basic Elysia building block examples: Routing, Validation, Handlers
 - `deployment.md` - Production setup
 - `eden.md` - Elysia's type safe RPC client similar to tRPC
-- `guard.md` - Setting mulitple validation schema and lifecycle
-- `macro.md` - Composable Elysia function
+- `guard.md` - Setting validation/lifecycle all at once
+- `macro.md` - Compose multiple schema/lifecycle as a reusable Elysia via key-value (recommended for complex setup, eg. authentication, authorization, Role-based Access Check)
+- `plugin.md` - Decouple part of Elysia into a standalone component
+- `route.md` - Elysia foundation building block: Routing, Handler and Context
 - `testing.md` - Unit tests with examples
-- `validation.md` - Setup input/output validation
+- `validation.md` - Setup input/output validation and list of all custom validation rules
 - `websocket.md` - Real-time features
 
 ### examples/ (optional)
@@ -461,4 +500,4 @@ Detailed documentation split by topic:
 - `websocket.ts` - Web Socket for realtime communication
 
 ### patterns/ (optional)
-- `patterns/mvc.md` - Using Elysia with MVC patterns
+- `patterns/mvc.md` - Detail guideline for using Elysia with MVC patterns
