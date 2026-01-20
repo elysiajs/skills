@@ -245,6 +245,20 @@ Detailed documentation split by topic:
 - `validation.md` - Setup input/output validation and list of all custom validation rules
 - `websocket.md` - Real-time features
 
+### plugins/ 
+Detailed documentation, usage and configuration reference for official Elysia plugin:
+- `bearer.md` - Add bearer capability to Elysia (`@elysiajs/bearer`)
+- `cors.md` - Out of box configuration for CORS (`@elysiajs/cors`)
+- `cron.md` - Run cron job with access to Elysia context (`@elysiajs/cron`)
+- `graphql-apollo.md` - Integration GraphQL Apollo (`@elysiajs/graphql-apollo`)
+- `graphql-yoga.md` - Integration with GraphQL Yoga (`@elysiajs/graphql-yoga`)
+- `html.md` - HTML and JSX plugin setup and usage (`@elysiajs/html`)
+- `jwt.md` - JWT / JWK plugin (`@elysiajs/jwt`)
+- `openapi.md` - OpenAPI documentation and OpenAPI Type Gen / OpenAPI from types (`@elysiajs/openapi`)
+- `opentelemetry.md` - OpenTelemetry, instrumentation, and record span utilities (`@elysiajs/opentelemetry`)
+- `server-timing.md` - Server Timing metric for debug (`@elysiajs/server-timing`) 
+- `static.md` - Serve static files/folders for Elysia Server (`@elysiajs/static`)
+
 ### examples/ (optional)
 - `basic.ts` - Basic Elysia example
 - `body-parser.ts` - Custom body parser example via `.onParse`
