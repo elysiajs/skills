@@ -100,369 +100,131 @@ Elysia is unopinionated on design pattern, but if not provided, we can relies on
 	- Always export validation model and type of validation model
 	- Custom Error should be in contains in Model
 
-## Core Concepts
+## Elysia Key Concept
+Elysia has a every important concepts/rules to understand before use.
 
-## Key Concept
-Elysia has a every important concepts that you need to understand to use.
+## Encapsulation - Isolates by Default
 
-### Encapsulation
-Elysia lifecycle methods are **encapsulated** to its own instance only.
+Lifecycles (hooks, middleware) **don't leak** between instances unless scoped.
 
-Which means if you create a new instance, it will not share the lifecycle methods with others.
-
-```ts
-import { Elysia } from 'elysia'
-
-const profile = new Elysia()
-	.onBeforeHandle(({ cookie }) => {
-		throwIfNotSignIn(cookie)
-	})
-	.get('/profile', () => 'Hi there!')
-
-const app = new Elysia()
-	.use(profile)
-	// This will NOT have sign in check
-	.patch('/rename', ({ body }) => updateProfile(body))
-```
-
-In above example, the `isSignIn` check will only apply to `profile` but not `app`.
-
-**Elysia isolate lifecycle by default** unless explicitly stated. This is similar to **export** in JavaScript, where you need to export the function to make it available outside the module.
-
-To "export" the lifecycle to other instances, you must add specify the scope.
+**Scope levels:**
+- `local` (default) - current instance + descendants
+- `scoped` - parent + current + descendants  
+- `global` - all instances
 
 ```ts
-import { Elysia } from 'elysia'
+.onBeforeHandle(() => {}) // only local instance
+.onBeforeHandle({ as: 'global' }, () => {}) // exports to all
+```
 
-const profile = new Elysia()
-	.onBeforeHandle(
-		{ as: 'global' }, // [!code ++]
-		({ cookie }) => {
-			throwIfNotSignIn(cookie)
-		}
-	)
-	.get('/profile', () => 'Hi there!')
+## Method Chaining - Required for Types
 
+**Must chain**. Each method returns new type reference.
+
+❌ Don't:
+```ts
 const app = new Elysia()
-	.use(profile)
-	// This has sign in check
-	.patch('/rename', ({ body }) => updateProfile(body))
+app.state('build', 1) // loses type
+app.get('/', ({ store }) => store.build) // build doesn't exists
 ```
 
-Casting lifecycle to **"global"** will export lifecycle to **every instance**.
-
-### Encapsulation scope level
-Elysia has 3 levels of scope as the following:
-
-Scope type are as the following:
-1. **local** (default) - apply to only current instance and descendant only
-2. **scoped** - apply to parent, current instance and descendants
-3. **global** - apply to all instance that apply the plugin (all parents, current, and descendants)
-
-Let's review what each scope type does by using the following example:
-```typescript
-import { Elysia } from 'elysia'
-
-
-const child = new Elysia()
-    .get('/child', 'hi')
-
-const current = new Elysia()
-	// ? Value based on table value provided below
-    .onBeforeHandle({ as: 'local' }, () => { // [!code ++]
-        console.log('hi')
-    })
-    .use(child)
-    .get('/current', 'hi')
-
-const parent = new Elysia()
-    .use(current)
-    .get('/parent', 'hi')
-
-const main = new Elysia()
-    .use(parent)
-    .get('/main', 'hi')
+✅ Do:
+```ts
+new Elysia()
+  .state('build', 1)
+  .get('/', ({ store }) => store.build)
 ```
 
-By changing the `type` value, the result should be as follows:
+## Explicit Dependencies
 
-| type       | child | current | parent | main |
-| ---------- | ----- | ------- | ------ | ---- |
-| local      | ✅    | ✅      | ❌      | ❌   |
-| scoped     | ✅    | ✅      | ✅      | ❌   |
-| global     | ✅    | ✅      | ✅      | ✅   |
-
-### Descendant
-
-By default plugin will **apply hook to itself and descendants** only.
-
-If the hook is registered in a plugin, instances that inherit the plugin will **NOT** inherit hooks and schema.
-
-```typescript
-import { Elysia } from 'elysia'
-
-const plugin = new Elysia()
-    .onBeforeHandle(() => {
-        console.log('hi')
-    })
-    .get('/child', 'log hi')
-
-const main = new Elysia()
-    .use(plugin)
-    .get('/parent', 'not log hi')
-```
-
-To apply hook to globally, we need to specify hook as global.
-```typescript
-import { Elysia } from 'elysia'
-
-const plugin = new Elysia()
-    .onBeforeHandle(() => {
-        return 'hi'
-    })
-    .get('/child', 'child')
-    .as('scoped')
-
-const main = new Elysia()
-    .use(plugin)
-    .get('/parent', 'parent')
-```
-
-### Everything is a component
-
-Every Elysia instance is a component.
-
-A component is a plugin that could plug into other instances.
-
-It could be a router, a store, a service, or anything else.
+Each instance independent. **Declare what you use.**
 
 ```ts
-import { Elysia } from 'elysia'
-
-const store = new Elysia()
-	.state({ visitor: 0 })
-
-const router = new Elysia()
-	.use(store)
-	.get('/increase', ({ store }) => store.visitor++)
-
-const app = new Elysia()
-	.use(router)
-	.get('/', ({ store }) => store)
-	.listen(3000)
-```
-
-This forces you to break down your application into small pieces, making it easy for you to add or remove features.
-
-### Method Chaining
-Elysia code should **ALWAYS** use method chaining, this is **important to ensure type safety**.
-
-Every method in Elysia returns a new type reference, without using method chaining, Elysia doesn't save these new types, leading to no type inference.
-
-Don't do:
-```typescript
-// Don't do
-import { Elysia } from 'elysia'
-
-const app = new Elysia()
-app.state('build', 1)
-
-// Type error "build" doesn't exists
-app.get('/', ({ store: { build } }) => build)
-app.listen(3000)
-```
-
-Do
-```typescript
-import { Elysia } from 'elysia'
-
-const app = new Elysia()
-	.state('build', 1)
-	.get('/', ({ store: { build } }) => build)
-	.listen(3000)
-```
-
-Always use method chaining to provide an accurate type inference.
-
-## Dependency
-Elysia by design, is compose of multiple mini Elysia apps which can run **independently** like a microservice that communicate with each other.
-
-Each Elysia instance is independent and **can run as a standalone server**.
-
-When an instance need to use another instance's service, you **must explicitly declare the dependency**.
-
-```ts
-import { Elysia } from 'elysia'
-
 const auth = new Elysia()
 	.decorate('Auth', Auth)
 	.model(Auth.models)
 
-// Don't
 new Elysia()
- 	// 'auth' is missing
-	.get('/', ({ Auth }) => Auth.getProfile())
-
-// Do
-new Elysia()
-	.use(auth)
-	// auth is required to use Auth's service
-	.get('/profile', ({ Auth }) => Auth.getProfile())
-```
-
-This is similar to **Dependency Injection** where each instance must declare its dependencies.
-
-This approach force you to be explicit about dependencies allowing better tracking, modularity.
-
-### Deduplication
-
-By default, each plugin will be re-executed **every time** applying to another instance.
-
-To prevent this, Elysia can deduplicate lifecycle with **an unique identifier** using `name` and optional `seed` property.
-
-```ts
-import { Elysia } from 'elysia'
-
-const ip = new Elysia({ name: 'ip' })
-	.derive(
-		{ as: 'global' },
-		({ server, request }) => ({
-			ip: server?.requestIP(request)
-		})
-	)
-	.get('/ip', ({ ip }) => ip)
-
-const router1 = new Elysia()
-	.use(ip)
-	.get('/ip-1', ({ ip }) => ip)
-
-const router2 = new Elysia()
-	.use(ip)
-	.get('/ip-2', ({ ip }) => ip)
-
-const server = new Elysia()
-	.use(router1)
-	.use(router2)
-```
-
-Adding the `name` and optional `seed` to the instance will make it a unique identifier prevent it from being called multiple times.
-
-### Global vs Explicit Dependency
-
-There are some case that global dependency make more sense than an explicit one.
-
-**Global** plugin example:
-- **Plugin that doesn't add types** - eg. cors, compress, helmet
-- Plugin that add global lifecycle that no instance should have control over - eg. tracing, logging
-
-Example use cases:
-- OpenAPI/Open - Global document
-- OpenTelemetry - Global tracer
-- Logging - Global logger
-
-In case like this, it make more sense to create it as global dependency instead of applying it to every instance.
-
-However, if your dependency doesn't fit into these categories, it's recommended to use **explicit dependency** instead.
-
-**Explicit dependency** example:
-- **Plugin that add types** - eg. macro, state, model
-- Plugin that add business logic that instance can interact with - eg. Auth, Database
-
-Example use cases:
-- State management - eg. Store, Session
-- Data modeling - eg. ORM, ODM
-- Business logic - eg. Auth, Database
-- Feature module - eg. Chat, Notification
-
-### Order of code
-
-The order of Elysia's life-cycle code is very important.
-
-Because event will only apply to routes **after** it is registered.
-
-If you put the onError before plugin, plugin will not inherit the onError event.
-
-```typescript
-import { Elysia } from 'elysia'
+  .get('/', ({ Auth }) => Auth.getProfile()) // Auth doesn't exists
 
 new Elysia()
- 	.onBeforeHandle(() => {
-        console.log('1')
-    })
-	.get('/', () => 'hi')
-    .onBeforeHandle(() => {
-        console.log('2')
-    })
-    .listen(3000)
+  .use(auth) // must declare
+  .get('/', ({ Auth }) => Auth.getProfile())
 ```
 
-Console should log the following:
+**Global scope when:**
+- No types added (cors, helmet)
+- Global lifecycle (logging, tracing)
 
-```bash
-1
-```
+**Explicit when:**
+- Adds types (state, models)
+- Business logic (auth, db)
 
-Notice that it doesn't log **2**, because the event is registered after the route so it is not applied to the route.
+## Deduplication
 
-Learn more about this in [order of code](/essential/life-cycle.html#order-of-code).
-
-### Type Inference
-Elysia has a complex type system that allows you to infer types from the instance.
+Plugins re-execute unless named:
 
 ```ts
-import { Elysia, t } from 'elysia'
-
-const app = new Elysia()
-	.post('/', ({ body }) => body, {
-		body: t.Object({
-			name: t.String()
-		})
-	})
+new Elysia() // rerun on `.use`
+new Elysia({ name: 'ip' }) // runs once across all instances
 ```
 
-You should **always use an inline function** to provide an accurate type inference.
+## Order Matters
 
-If you need to apply a separate function, eg. MVC's controller pattern, it's recommended to destructure properties from inline function to prevent unnecessary type inference as follows:
+Events apply to routes **registered after** them.
 
 ```ts
-import { Elysia, t } from 'elysia'
-
-abstract class Controller {
-	static greet({ name }: { name: string }) {
-		return 'hello ' + name
-	}
-}
-
-const app = new Elysia()
-	.post('/', ({ body }) => Controller.greet(body), {
-		body: t.Object({
-			name: t.String()
-		})
-	})
+.onBeforeHandle(() => console.log('1'))
+.get('/', () => 'hi') // has hook
+.onBeforeHandle(() => console.log('2')) // doesn't affect '/'
 ```
 
-### TypeScript
-We can get a type definitions of every Elysia/TypeBox's type by accessing `static` property as follows:
+## Type Inference
+
+**Inline functions only** for accurate types.
+
+For controllers, destructure in inline wrapper:
 
 ```ts
-import { t } from 'elysia'
-
-const MyType = t.Object({
-	hello: t.Literal('Elysia')
+.post('/', ({ body }) => Controller.greet(body), {
+  body: t.Object({ name: t.String() })
 })
+```
 
+Get type from schema:
+```ts
 type MyType = typeof MyType.static
 ```
 
-This allows Elysia to infer and provide type automatically, reducing the need to declare duplicate schema
+## Reference Model
+Model can be reference by name, especially great for documenting an API
+```ts
+new Elysia()
+	.model({
+		book: t.Object({
+			name: t.String()
+		})
+	})
+	.post('/', ({ body }) => body.name, {
+		body: 'book'
+	})
+```
 
-A single Elysia/TypeBox schema can be used for:
-- Runtime validation
-- Data coercion
-- TypeScript type
-- OpenAPI schema
+Model can be renamed by using `.prefix` / `.suffix`
+```ts
+new Elysia()
+	.model({
+		book: t.Object({
+			name: t.String()
+		})
+	})
+	.prefix('model', 'Namespace')
+	.post('/', ({ body }) => body.name, {
+		body: 'Namespace.Book'
+	})
+```
 
-This allows us to make a schema as a **single source of truth**.
+Once `prefix`, model name will be capitalized by default.
 
 ## Resources
 Use the following references as needed.
