@@ -1,6 +1,6 @@
 ---
 name: elysiajs
-description: Expert knowledge for building type-safe, high-performance backend servers with ElysiaJS.
+description: Create backend with ElysiaJS, a type-safe, high-performance framework.
 ---
 
 # ElysiaJS Development Skill
@@ -24,6 +24,10 @@ Trigger this skill when the user asks to:
 - Deploy Elysia servers to production
 
 ## Quick Start
+Quick scaffold:
+```bash
+bun create elysia app
+```
 
 ### Basic Server
 ```typescript
@@ -53,6 +57,173 @@ const app = new Elysia()
       	}
     })
     .listen(3000)
+```
+
+## Basic Usage
+
+### HTTP Methods
+```typescript
+import { Elysia } from 'elysia'
+
+new Elysia()
+  .get('/', 'GET')
+  .post('/', 'POST')
+  .put('/', 'PUT')
+  .patch('/', 'PATCH')
+  .delete('/', 'DELETE')
+  .options('/', 'OPTIONS')
+  .head('/', 'HEAD')
+```
+
+### Path Parameters
+```typescript
+.get('/user/:id', ({ params: { id } }) => id)
+.get('/post/:id/:slug', ({ params }) => params)
+```
+
+### Query Parameters
+```typescript
+.get('/search', ({ query }) => query.q)
+// GET /search?q=elysia → "elysia"
+```
+
+### Request Body
+```typescript
+.post('/user', ({ body }) => body)
+```
+
+### Headers
+```typescript
+.get('/', ({ headers }) => headers.authorization)
+```
+
+## TypeBox Validation
+
+### Basic Types
+```typescript
+import { Elysia, t } from 'elysia'
+
+.post('/user', ({ body }) => body, {
+  body: t.Object({
+    name: t.String(),
+    age: t.Number(),
+    email: t.String({ format: 'email' }),
+    website: t.Optional(t.String({ format: 'uri' }))
+  })
+})
+```
+
+### Nested Objects
+```typescript
+body: t.Object({
+  user: t.Object({
+    name: t.String(),
+    address: t.Object({
+      street: t.String(),
+      city: t.String()
+    })
+  })
+})
+```
+
+### Arrays
+```typescript
+body: t.Object({
+  tags: t.Array(t.String()),
+  users: t.Array(t.Object({
+    id: t.String(),
+    name: t.String()
+  }))
+})
+```
+
+### File Upload
+```typescript
+.post('/upload', ({ body }) => body.file, {
+  body: t.Object({
+    file: t.File({
+      type: 'image',              // image/* mime types
+      maxSize: '5m'               // 5 megabytes
+    }),
+    files: t.Files({              // Multiple files
+      type: ['image/png', 'image/jpeg']
+    })
+  })
+})
+```
+
+### Response Validation
+```typescript
+.get('/user/:id', ({ params: { id } }) => ({
+  id,
+  name: 'John',
+  email: 'john@example.com'
+}), {
+  params: t.Object({
+    id: t.Number()
+  }),
+  response: {
+    200: t.Object({
+      id: t.Number(),
+      name: t.String(),
+      email: t.String()
+    }),
+    404: t.String()
+  }
+})
+```
+
+## Standard Schema (Zod, Valibot, ArkType)
+
+### Zod
+```typescript
+import { z } from 'zod'
+
+.post('/user', ({ body }) => body, {
+  body: z.object({
+    name: z.string(),
+    age: z.number().min(0),
+    email: z.string().email()
+  })
+})
+```
+
+## Error Handling
+
+```typescript
+.get('/user/:id', ({ params: { id }, status }) => {
+  const user = findUser(id)
+  
+  if (!user) {
+    return status(404, 'User not found')
+  }
+  
+  return user
+})
+```
+
+## Guards (Apply to Multiple Routes)
+
+```typescript
+.guard({
+  params: t.Object({
+    id: t.Number()
+  })
+}, app => app
+  .get('/user/:id', ({ params: { id } }) => id)
+  .delete('/user/:id', ({ params: { id } }) => id)
+)
+```
+
+## Macro
+
+```typescript
+.macro({
+  hi: (word: string) => ({
+    beforeHandle() { console.log(word) }
+  })
+})
+.get('/', () => 'hi', { hi: 'Elysia' })
 ```
 
 ### Project Structure (Recommended)
@@ -226,6 +397,11 @@ new Elysia()
 
 Once `prefix`, model name will be capitalized by default.
 
+## Technical Terms
+The following are technical terms that is use for Elysia:
+- `OpenAPI Type Gen` - function name `fromTypes` from `@elysiajs/openapi` for generating OpenAPI from types, see `plugins/openapi.md`
+- `Eden`, `Eden Treaty` - e2e type safe RPC client for share type from backend to frontend
+
 ## Resources
 Use the following references as needed.
 
@@ -235,8 +411,10 @@ It's recommended to checkout `route.md` for as it contains the most important fo
 
 ### references/
 Detailed documentation split by topic:
-- `deployment.md` - Production setup
-- `eden.md` - Elysia's type safe RPC client similar to tRPC
+- `bun-fullstack-dev-server.md` - Bun Fullstack Dev Server with HMR. React without bundler.
+- `cookie.md` - Detailed documentation on cookie
+- `deployment.md` - Production deployment guide / Docker
+- `eden.md` - e2e type safe RPC client for share type from backend to frontend
 - `guard.md` - Setting validation/lifecycle all at once
 - `macro.md` - Compose multiple schema/lifecycle as a reusable Elysia via key-value (recommended for complex setup, eg. authentication, authorization, Role-based Access Check)
 - `plugin.md` - Decouple part of Elysia into a standalone component
@@ -258,6 +436,24 @@ Detailed documentation, usage and configuration reference for official Elysia pl
 - `opentelemetry.md` - OpenTelemetry, instrumentation, and record span utilities (`@elysiajs/opentelemetry`)
 - `server-timing.md` - Server Timing metric for debug (`@elysiajs/server-timing`) 
 - `static.md` - Serve static files/folders for Elysia Server (`@elysiajs/static`)
+
+### integrations/
+Guide to integrate Elysia with external library/runtime:
+- `ai-sdk.md` - Using Vercel AI SDK with Elysia
+- `astro.md` - Elysia in Astro API route
+- `better-auth.md` - Integrate Elysia with better-auth
+- `cloudflare-worker.md` - Elysia on Cloudflare Worker adapter
+- `deno.md` - Elysia on Deno
+- `drizzle.md` - Integrate Elysia with Drizzle ORM
+- `expo.md` - Elysia in Expo API route
+- `nextjs.md` - Elysia in Nextjs API route
+- `nodejs.md` - Run Elysia on Node.js
+- `nuxt.md` - Elysia on API route
+- `prisma.md` - Integrate Elysia with Prisma
+- `react-email.d` - Create and Send Email with React and Elysia
+- `sveltekit.md` - Run Elysia on Svelte Kit API route
+- `tanstack-start.md` - Run Elysia on Tanstack Start / React Query
+- `vercel.md` - Deploy Elysia to Vercel
 
 ### examples/ (optional)
 - `basic.ts` - Basic Elysia example

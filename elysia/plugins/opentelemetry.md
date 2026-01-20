@@ -1,6 +1,4 @@
-# OpenTelemetry
-
-An OpenTelemetry plugin for Elysia.
+# OpenTelemetry Plugin - SKILLS.md
 
 ## Installation
 ```bash
@@ -8,297 +6,162 @@ bun add @elysiajs/opentelemetry
 ```
 
 ## Basic Usage
-```typescript twoslash
-import { Elysia } from 'elysia'
+```typescript
 import { opentelemetry } from '@elysiajs/opentelemetry'
-
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 
 new Elysia()
-	.use(
-		opentelemetry({
-			spanProcessors: [
-				new BatchSpanProcessor(
-					new OTLPTraceExporter()
-				)
-			]
-		})
-	)
+  .use(opentelemetry({
+    spanProcessors: [
+      new BatchSpanProcessor(new OTLPTraceExporter())
+    ]
+  }))
 ```
 
-Elysia OpenTelemetry is will **collect span of any library compatible OpenTelemetry standard**, and will apply parent and child span automatically.
+Auto-collects spans from OpenTelemetry-compatible libraries. Parent/child spans applied automatically.
 
 ## Config
-This plugin extends OpenTelemetry SDK parameters options.
+Extends OpenTelemetry SDK params:
 
-Below is a config which is accepted by the plugin
+- `autoDetectResources` (true) - Auto-detect from env
+- `contextManager` (AsyncHooksContextManager) - Custom context
+- `textMapPropagator` (CompositePropagator) - W3C Trace + Baggage
+- `metricReader` - For MeterProvider
+- `views` - Histogram bucket config
+- `instrumentations` (getNodeAutoInstrumentations()) - Metapackage or individual
+- `resource` - Custom resource
+- `resourceDetectors` ([envDetector, processDetector, hostDetector]) - Auto-detect needs `autoDetectResources: true`
+- `sampler` - Custom sampler (default: sample all)
+- `serviceName` - Namespace identifier
+- `spanProcessors` - Array for tracer provider
+- `traceExporter` - Auto-setup OTLP/http/protobuf with BatchSpanProcessor if not set
+- `spanLimits` - Tracing params
 
-### autoDetectResources - boolean
-Detect resources automatically from the environment using the default resource detectors.
-
-default: `true`
-
-### contextManager - ContextManager
-Use a custom context manager.
-
-default: `AsyncHooksContextManager`
-
-### textMapPropagator - TextMapPropagator
-Use a custom propagator.
-
-default: `CompositePropagator` using W3C Trace Context and Baggage
-
-### metricReader - MetricReader
-Add a MetricReader that will be passed to the MeterProvider.
-
-### views - View[]
-A list of views to be passed to the MeterProvider.
-
-Accepts an array of View-instances. This parameter can be used to configure explicit bucket sizes of histogram metrics.
-
-### instrumentations - (Instrumentation | Instrumentation[])[]
-Configure instrumentations.
-
-By default `getNodeAutoInstrumentations` is enabled, if you want to enable them you can use either metapackage or configure each instrumentation individually.
-
-default: `getNodeAutoInstrumentations()`
-
-### resource - IResource
-Configure a resource.
-
-Resources may also be detected by using the autoDetectResources method of the SDK.
-
-### resourceDetectors - Array<Detector | DetectorSync>
-Configure resource detectors. By default, the resource detectors are [envDetector, processDetector, hostDetector]. NOTE: In order to enable the detection, the parameter autoDetectResources has to be true.
-
-If resourceDetectors was not set, you can also use the environment variable OTEL_NODE_RESOURCE_DETECTORS to enable only certain detectors, or completely disable them:
-
-- env
-- host
-- os
-- process
-- serviceinstance (experimental)
-- all - enable all resource detectors above
-- none - disable resource detection
-
-For example, to enable only the env, host detectors:
-
+### Resource Detectors via Env
 ```bash
 export OTEL_NODE_RESOURCE_DETECTORS="env,host"
+# Options: env, host, os, process, serviceinstance, all, none
 ```
 
-### sampler - Sampler
-Configure a custom sampler. By default, all traces will be sampled.
-
-### serviceName - string
-Namespace to be identify as.
-
-### spanProcessors - SpanProcessor[]
-An array of span processors to register to the tracer provider.
-
-### traceExporter - SpanExporter
-Configure a trace exporter. If an exporter is configured, it will be used with a `BatchSpanProcessor`.
-
-If an exporter OR span processor is not configured programmatically, this package will auto setup the default otlp exporter with http/protobuf protocol with a BatchSpanProcessor.
-
-### spanLimits - SpanLimits
-Configure tracing parameters. These are the same trace parameters used to configure a tracer.
-
----
-
-## Pattern
-Below is a pettern for using OpenTelemetry with Elysia
-
-### Export OpenTelemetry data
-We can export OpenTelemetry data to any backend that supports OpenTelemetry protocol.
-
-Here's an example of exporting telemetry to [Axiom](https://axiom.co)
-
+## Export to Backends
+Example - Axiom:
 ```typescript
-import { Elysia } from 'elysia'
-import { opentelemetry } from '@elysiajs/opentelemetry'
-
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node'
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
-
-new Elysia().use(
-	opentelemetry({
-		spanProcessors: [
-			new BatchSpanProcessor(
-				new OTLPTraceExporter({
-					url: 'https://api.axiom.co/v1/traces', 
-					headers: {
-						Authorization: `Bearer ${Bun.env.AXIOM_TOKEN}`, 
-						'X-Axiom-Dataset': Bun.env.AXIOM_DATASET 
-					} 
-				})
-			)
-		]
-	})
-)
+.use(opentelemetry({
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'https://api.axiom.co/v1/traces',
+        headers: {
+          Authorization: `Bearer ${Bun.env.AXIOM_TOKEN}`,
+          'X-Axiom-Dataset': Bun.env.AXIOM_DATASET
+        }
+      })
+    )
+  ]
+}))
 ```
 
 ## OpenTelemetry SDK
+Use SDK normally - runs under Elysia's request span, auto-appears in trace.
 
-Elysia OpenTelemetry is for applying OpenTelemetry to Elysia server only.
-
-You may use OpenTelemetry SDK normally, and the span is run under Elysia's request span, it will be automatically appear in Elysia trace.
-
-However, we also provide a `getTracer`, and `record` utility to collect span from any part of your application.
-
+## Record Utility
+Equivalent to `startActiveSpan` - auto-closes + captures exceptions:
 ```typescript
-import { Elysia } from 'elysia'
 import { record } from '@elysiajs/opentelemetry'
 
-export const plugin = new Elysia().get('', () => {
-	return record('database.query', () => {
-		return db.query('SELECT * FROM users')
-	})
+.get('', () => {
+  return record('database.query', () => {
+    return db.query('SELECT * FROM users')
+  })
 })
 ```
 
-## Record utility
+Label for code shown in trace.
 
-`record` is an equivalent to OpenTelemetry's `startActiveSpan` but it will handle auto-closing and capture exception automatically.
-
-You may think of `record` as a label for your code that will be shown in trace.
-
-### Prepare your codebase for observability
-
-Elysia OpenTelemetry will group lifecycle and read the **function name** of each hook as the name of the span.
-
-It's a good time to **name your function**.
-
-If your hook handler is an arrow function, you may refactor it to named function to understand the trace better, otherwise your trace span will be named as `anonymous`.
-
+## Function Naming
+Elysia reads function names as span names:
 ```typescript
-const bad = new Elysia()
-	// ⚠️ span name will be anonymous
-	.derive(async ({ cookie: { session } }) => {
-		return {
-			user: await getProfile(session)
-		}
-	})
+// ⚠️ Anonymous span
+.derive(async ({ cookie: { session } }) => {
+  return { user: await getProfile(session) }
+})
 
-const good = new Elysia()
-	// ✅ span name will be getProfile
-	.derive(async function getProfile({ cookie: { session } }) {
-		return {
-			user: await getProfile(session)
-		}
-	})
+// ✅ Named span: "getProfile"
+.derive(async function getProfile({ cookie: { session } }) {
+  return { user: await getProfile(session) }
+})
 ```
 
 ## getCurrentSpan
-
-`getCurrentSpan` is a utility to get the current span of the current request when you are outside of the handler.
-
+Get current span outside handler (via AsyncLocalStorage):
 ```typescript
 import { getCurrentSpan } from '@elysiajs/opentelemetry'
 
 function utility() {
-	const span = getCurrentSpan()
-	span.setAttributes({
-		'custom.attribute': 'value'
-	})
+  const span = getCurrentSpan()
+  span.setAttributes({ 'custom.attribute': 'value' })
 }
 ```
 
-This works outside of the handler by retriving current span from `AsyncLocalStorage`
-
 ## setAttributes
-
-`setAttributes` is a utility to set attributes to the current span.
-
+Sugar for `getCurrentSpan().setAttributes`:
 ```typescript
 import { setAttributes } from '@elysiajs/opentelemetry'
 
 function utility() {
-	setAttributes({
-		'custom.attribute': 'value'
-	})
+  setAttributes({ 'custom.attribute': 'value' })
 }
 ```
 
-This is a syntax sugar for `getCurrentSpan().setAttributes`
+## Instrumentations (Advanced)
+SDK must run before importing instrumented module.
 
-## Configuration
-
-See [opentelemetry plugin](/plugins/opentelemetry) for configuration option and definition.
-
-## Instrumentations <Badge type="warning">Advanced Concept</Badge>
-
-Many instrumentation libraries required that the SDK **MUST** run before importing the module.
-
-For example, to use `PgInstrumentation`, the `OpenTelemetry SDK` must run before importing the `pg` module.
-
-To achieve this in Bun, we can
-
-1. Separate an OpenTelemetry setup into a different file
-2. create `bunfig.toml` to preload the OpenTelemetry setup file
-
-Let's create a new file in `src/instrumentation.ts`
-
-```ts [src/instrumentation.ts]
+### Setup
+1. Separate file:
+```typescript
+// src/instrumentation.ts
 import { opentelemetry } from '@elysiajs/opentelemetry'
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg'
 
 export const instrumentation = opentelemetry({
-	instrumentations: [new PgInstrumentation()]
+  instrumentations: [new PgInstrumentation()]
 })
 ```
 
-Then we can apply this `instrumentaiton` plugin into our main instance in `src/index.ts`
-
-```ts [src/index.ts]
-import { Elysia } from 'elysia'
-import { instrumentation } from './instrumentation.ts'
-
+2. Apply:
+```typescript
+// src/index.ts
+import { instrumentation } from './instrumentation'
 new Elysia().use(instrumentation).listen(3000)
 ```
 
-Then create a `bunfig.toml` with the following:
-
-```toml [bunfig.toml]
+3. Preload:
+```toml
+# bunfig.toml
 preload = ["./src/instrumentation.ts"]
 ```
 
-This will tell Bun to load and setup `instrumentation` before running the `src/index.ts` allowing OpenTelemetry to do its setup as needed.
-
-### Deploying to production <Badge type="warning">Advanced Concept</Badge>
-If you are using `bun build` or other bundlers.
-
-As OpenTelemetry rely on monkey-patching `node_modules/<library>`. It's required that make instrumentations works properly, we need to specify that libraries to be instrument is an external module to exclude it from being bundled.
-
-For example, if you are using `@opentelemetry/instrumentation-pg` to instrument `pg` library. We need to exclude `pg` from being bundled and make sure that it is importing `node_modules/pg`.
-
-To make this works, we may specified `pg` as an external module with `--external pg`
+### Production Deployment (Advanced)
+OpenTelemetry monkey-patches `node_modules`. Exclude instrumented libs from bundling:
 ```bash
 bun build --compile --external pg --outfile server src/index.ts
 ```
 
-This tells bun to not `pg` bundled into the final output file, and will be imported from the **node_modules** directory at runtime. So on a production server, you must also keeps the **node_modules** directory.
-
-It's recommended to specify packages that should be available in a production server as **dependencies** in **package.json** and use `bun install --production` to install only production dependencies.
-
+Package.json:
 ```json
 {
-	"dependencies": {
-		"pg": "^8.15.6"
-	},
-	"devDependencies": {
-		"@elysiajs/opentelemetry": "^1.2.0",
-		"@opentelemetry/instrumentation-pg": "^0.52.0",
-		"@types/pg": "^8.11.14",
-		"elysia": "^1.2.25"
-	}
+  "dependencies": { "pg": "^8.15.6" },
+  "devDependencies": {
+    "@elysiajs/opentelemetry": "^1.2.0",
+    "@opentelemetry/instrumentation-pg": "^0.52.0"
+  }
 }
 ```
 
-Then after running a build command, on a production server
+Production install:
 ```bash
 bun install --production
 ```
 
-If the node_modules directory still includes development dependencies, you may remove the node_modules directory and reinstall production dependencies again.
+Keeps `node_modules` with instrumented libs at runtime.

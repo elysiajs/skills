@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "organization": "ElysiaJS",
   "date": "20 Jan 2026",
-  "abstract": "Expert knowledge for building type-safe, high-performance backend servers with ElysiaJS.",
+  "abstract": "Create backend with ElysiaJS, a type-safe, high-performance framework.",
   "references": ["https://elysiajs.com/llms.txt"]
 }
