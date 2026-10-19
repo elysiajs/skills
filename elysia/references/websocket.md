@@ -1,250 +1,86 @@
 # WebSocket
 
-## Basic WebSocket
+Register `websocket()` from `elysia/websocket` before `.ws()` routes. Use a standard WebSocket client; Socket.IO uses another protocol. Support depends on the [adapter](runtimes.md).
 
-```typescript
-import { Elysia } from 'elysia'
+## Typed messages
+
+```ts
+import { Elysia, t } from 'elysia'
+import { websocket } from 'elysia/websocket'
 
 new Elysia()
-  .ws('/chat', {
-    message(ws, message) {
-      ws.send(message)  // Echo back
-    }
-  })
-  .listen(3000)
+	.use(websocket())
+	.ws('/chat', {
+		query: t.Object({ room: t.String() }),
+		body: t.Object({ message: t.String() }),
+		response: t.String()
+	}, function* ({ query, body }) {
+		yield `Room: ${query.room}`
+		yield body.message
+	})
+	.listen(3000)
 ```
 
-## With Validation
+Connect to `ws://localhost:3000/chat?room=general` and send `{"message":"hello"}`. Each yield sends a separate message. Returns and yields preserve inferred response types; `ws.send()` also works.
 
-```typescript
+| Schema | Validates |
+| --- | --- |
+| `body` | Each incoming message |
+| `response` | Returned, yielded, or sent messages |
+| `query`, `params`, `headers`, `cookie` | Connection upgrade request |
+
+Default parsing recognizes JSON strings, arrays, objects, booleans, `null`, and safely convertible numeric strings. Other text remains text and binary remains binary.
+
+## Route forms and context
+
+Supported forms are `.ws(path, handler)`, `.ws(path, options, handler)`, and `.ws(path, optionsWithMessage)`. Do not set `options.message` when supplying a separate handler.
+
+Sockets expose `body`, `query`, `params`, and derived values directly. Use `ws.query`, not v1 `ws.data.query`. Members include `send`, `publish`, `subscribe`, `close`, `id`, `remoteAddress`, and `readyState`.
+
+## Lifecycle
+
+| Option | Behavior |
+| --- | --- |
+| `parse(ws, message)` | Runs after default message parsing and before validation; return a replacement or `undefined` to keep the value |
+| `transform` | Runs before validation on upgrade and again for messages |
+| `beforeHandle` | Runs on upgrade and before message handlers; return a status to reject the upgrade |
+| `upgrade` | Handshake response headers, as an object or function of the upgrade context |
+| `open(ws)` | Connection opened |
+| `message(ws, message)` | Validated message, also available as `ws.body` |
+| `drain(ws)` | Backpressure cleared |
+| `close(ws, code, reason)` | Connection closed |
+
+Authentication belongs in `beforeHandle`. Avoid assuming `transform` or `beforeHandle` runs only once per connection. Per-message `parse` is distinct from an HTTP body parser. The v1 `transformMessage` option is replaced by `parse`.
+
+Use this complete callback-form example:
+
+```ts
 import { Elysia, t } from 'elysia'
+import { websocket } from 'elysia/websocket'
 
-.ws('/chat', {
-  body: t.Object({
-    message: t.String(),
-    username: t.String()
-  }),
-  response: t.Object({
-    message: t.String(),
-    timestamp: t.Number()
-  }),
-  message(ws, body) {
-    ws.send({
-      message: body.message,
-      timestamp: Date.now()
-    })
-  }
-})
+new Elysia()
+	.use(websocket())
+	.ws('/echo', {
+		body: t.String(),
+		response: t.String(),
+		parse(_ws, message) {
+			if (typeof message === 'string') return message.trim()
+		},
+		message(_ws, message) {
+			return message.toUpperCase()
+		}
+	})
+	.listen(3000)
 ```
 
-## Lifecycle Events
+## Server configuration
 
-```typescript
-.ws('/chat', {
-  open(ws) {
-    console.log('Client connected')
-  },
-  message(ws, message) {
-    console.log('Received:', message)
-    ws.send('Echo: ' + message)
-  },
-  close(ws) {
-    console.log('Client disconnected')
-  },
-  error(ws, error) {
-    console.error('Error:', error)
-  }
-})
-```
+Set server defaults through `websocket({ idleTimeout: 30 })`, not the old constructor `websocket` option. Routes can override WebSocket tuning. Limits and defaults depend on the adapter. Bun options include:
 
-## Broadcasting
-
-```typescript
-const connections = new Set<any>()
-
-.ws('/chat', {
-  open(ws) {
-    connections.add(ws)
-  },
-  message(ws, message) {
-    // Broadcast to all connected clients
-    for (const client of connections) {
-      client.send(message)
-    }
-  },
-  close(ws) {
-    connections.delete(ws)
-  }
-})
-```
-
-## With Authentication
-
-```typescript
-.ws('/chat', {
-  beforeHandle({ headers, status }) {
-    const token = headers.authorization?.replace('Bearer ', '')
-    if (!verifyToken(token)) {
-      return status(401)
-    }
-  },
-  message(ws, message) {
-    ws.send(message)
-  }
-})
-```
-
-## Room-Based Chat
-
-```typescript
-const rooms = new Map<string, Set<any>>()
-
-.ws('/chat/:room', {
-  open(ws) {
-    const room = ws.data.params.room
-    if (!rooms.has(room)) {
-      rooms.set(room, new Set())
-    }
-    rooms.get(room)!.add(ws)
-  },
-  message(ws, message) {
-    const room = ws.data.params.room
-    const clients = rooms.get(room)
-    
-    if (clients) {
-      for (const client of clients) {
-        client.send(message)
-      }
-    }
-  },
-  close(ws) {
-    const room = ws.data.params.room
-    const clients = rooms.get(room)
-    
-    if (clients) {
-      clients.delete(ws)
-      if (clients.size === 0) {
-        rooms.delete(room)
-      }
-    }
-  }
-})
-```
-
-## With State/Context
-
-```typescript
-.ws('/chat', {
-  open(ws) {
-    ws.data.userId = generateUserId()
-    ws.data.joinedAt = Date.now()
-  },
-  message(ws, message) {
-    const response = {
-      userId: ws.data.userId,
-      message,
-      timestamp: Date.now()
-    }
-    ws.send(response)
-  }
-})
-```
-
-## Client Usage (Browser)
-
-```typescript
-const ws = new WebSocket('ws://localhost:3000/chat')
-
-ws.onopen = () => {
-  console.log('Connected')
-  ws.send('Hello Server!')
-}
-
-ws.onmessage = (event) => {
-  console.log('Received:', event.data)
-}
-
-ws.onerror = (error) => {
-  console.error('Error:', error)
-}
-
-ws.onclose = () => {
-  console.log('Disconnected')
-}
-```
-
-## Eden Treaty WebSocket
-
-```typescript
-// Server
-export const app = new Elysia()
-  .ws('/chat', {
-    message(ws, message) {
-      ws.send(message)
-    }
-  })
-
-export type App = typeof app
-
-// Client
-import { treaty } from '@elysiajs/eden'
-import type { App } from './server'
-
-const api = treaty<App>('localhost:3000')
-const chat = api.chat.subscribe()
-
-chat.subscribe((message) => {
-  console.log('Received:', message)
-})
-
-chat.send('Hello!')
-```
-
-## Headers in WebSocket
-
-```typescript
-.ws('/chat', {
-  header: t.Object({
-    authorization: t.String()
-  }),
-  beforeHandle({ headers, status }) {
-    const token = headers.authorization?.replace('Bearer ', '')
-    if (!token) return status(401)
-  },
-  message(ws, message) {
-    ws.send(message)
-  }
-})
-```
-
-## Query Parameters
-
-```typescript
-.ws('/chat', {
-  query: t.Object({
-    username: t.String()
-  }),
-  message(ws, message) {
-    const username = ws.data.query.username
-    ws.send(`${username}: ${message}`)
-  }
-})
-
-// Client
-const ws = new WebSocket('ws://localhost:3000/chat?username=john')
-```
-
-## Compression
-
-```typescript
-new Elysia({
-  websocket: {
-    perMessageDeflate: true
-  }
-})
-  .ws('/chat', {
-    message(ws, message) {
-      ws.send(message)
-    }
-  })
-```
+| Option | Meaning |
+| --- | --- |
+| `perMessageDeflate` | Compression negotiation |
+| `maxPayloadLength` | Maximum incoming message bytes |
+| `idleTimeout` | Idle timeout in seconds |
+| `backpressureLimit` | Maximum buffered bytes per connection |
+| `closeOnBackpressureLimit` | Close when that buffer limit is reached |

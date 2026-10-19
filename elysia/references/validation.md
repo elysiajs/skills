@@ -1,491 +1,172 @@
-# Validation Schema - SKILLS.md
+# Validation
 
-## What It Is
-Runtime validation + type inference + OpenAPI schema from single source. TypeBox-based with Standard Schema support.
+Route schemas validate inputs and infer handler types. They also feed [OpenAPI](openapi.md). Options precede the handler in v2.
 
-## Basic Usage
-```typescript
+Contents: [slots](#schema-slots), [coercion](#coercion), [Standard Schema](#standard-schema), [files](#files), [models and types](#models-and-types).
+
+## Schema slots
+
+| Option | Validates |
+| --- | --- |
+| `body` | Parsed request body |
+| `query` | Query string |
+| `params` | Path parameters |
+| `headers` | Request headers |
+| `cookie` | Incoming cookies, with typed `.value` access; see [cookies](cookie.md) |
+| `response` | Handler result, using one schema or a status-to-schema map |
+
+```ts
+import { Elysia, t } from 'elysia'
+
+export const app = new Elysia()
+	.get('/users/:id', {
+		params: t.Object({ id: t.Number() }),
+		query: t.Object({ name: t.String() }),
+		response: t.Object({ id: t.Number(), name: t.String() })
+	}, ({ params, query }) => ({ id: params.id, name: query.name }))
+```
+
+`/users/42?name=Ada` passes with numeric `params.id`. Missing `name` or a nonnumeric `id` returns `422`. Response schema failures return `500`. See [errors.md](errors.md#validation-errors) for shapes and messages.
+
+## TypeBox schemas
+
+Import `t` from `elysia`. It combines TypeBox 1.x with HTTP-specific types. Common TypeBox builders include `String`, `Number`, `Boolean`, `Object`, `Array`, `Literal`, `Union`, `Optional`, and `Partial`. Constraints use JSON Schema options such as `minimum`, `minLength`, `format`, and `maxItems`.
+
+| Elysia builder | Behavior |
+| --- | --- |
+| `t.Numeric(options)` | Accepts a number or numeric string; decodes to number |
+| `t.BooleanString()` | Accepts a boolean or `'true'`/`'false'`; decodes to boolean |
+| `t.ObjectString({ ... })` | Accepts an object or its JSON string; decodes to object |
+| `t.UnionEnum(['a', 'b', 1])` | Union of the listed literals |
+| `t.Nullable(schema)` | Schema or `null` |
+| `t.MaybeEmpty(schema)` | Schema, `null`, or `undefined`; not automatically an empty string |
+| `t.File(options)` / `t.Files(options)` | One file or multiple files in one field |
+| `t.Cookie({ ... }, options)` | Cookie schema with cookie configuration |
+| `t.Form({ ... })` | FormData response created with `form()`; see [responses](api.md) |
+| `t.Uint8Array()` | Accepts ArrayBuffer or Uint8Array; decodes to Uint8Array |
+| `t.ArrayBuffer()` | Accepts ArrayBuffer without conversion |
+
+TypeBox 1.x uses `t.Codec`, not `t.Transform`. `t.Recursive`, `t.Not`, and `t.RegExp` are not exported. Schemas have no `.static` property. See [migration.md](migration.md) for v1 changes.
+
+## Coercion
+
+Elysia automatically coerces route inputs through TypeBox schemas. Standalone schemas get no route conversion.
+
+- Direct number and boolean fields in params, query, and headers accept their string representations.
+- Root numeric and boolean bodies also accept string representations.
+- Properties inside JSON body objects retain their declared types. With `body: t.Object({ count: t.Number() })`, `{"count": "1"}` fails and `{"count": 1}` passes.
+- Use `t.Numeric`, `t.BooleanString`, or `t.ObjectString` for conversion beyond those defaults.
+
+### Query arrays and optional input
+
+An array schema accepts comma-separated and repeated keys. Both `?name=ada,lin` and `?name=ada&name=lin` become `['ada', 'lin']` with `name: t.Array(t.String())`. Without an array schema, a comma-separated value stays a string and a repeated key keeps its last value.
+
+`t.Optional` can wrap a field or an entire request schema. `query: t.Optional(t.Object({ name: t.String() }))` permits an absent query; a nonempty query still needs `name`.
+
+### Extra properties
+
+Header schemas allow undeclared headers by default. `additionalProperties: false` rejects them, including ordinary browser headers, so use it deliberately. Cookie schemas also allow extra names by default.
+
+TypeBox response schemas validate the result and, under the default normalization setting, remove undeclared fields. Standard Schema output follows the chosen validator's behavior. Do not depend on a database row's sensitive fields being safe without a defined output contract.
+
+## Responses by status
+
+Return `status(code, body)` to preserve status-specific body types.
+
+```ts
 import { Elysia, t } from 'elysia'
 
 new Elysia()
-  .get('/id/:id', ({ params: { id } }) => id, {
-    params: t.Object({ id: t.Number({ minimum: 1 }) }),
-    response: {
-      200: t.Number(),
-      404: t.Literal('Not Found')
-    }
-  })
+	.get('/result', {
+		response: {
+			200: t.Object({ name: t.String() }),
+			400: t.Object({ error: t.String() })
+		}
+	}, ({ query, status }) => query.fail === 'true'
+		? status(400, { error: 'Invalid request' })
+		: { name: 'Ada' })
 ```
 
-## Schema Types
-Third parameter of HTTP method:
-- **body** - HTTP message
-- **query** - URL query params
-- **params** - Path params
-- **headers** - Request headers
-- **cookie** - Request cookies
-- **response** - Response (per status)
+## Standard Schema
 
-## Standard Schema Support
-Use Zod, Valibot, ArkType, Effect, Yup, Joi:
-```typescript
+Use compatible Standard Schema validators in any schema slot, alone or mixed with TypeBox on one route. Use each library's coercion and type helpers; Elysia's TypeBox coercion does not apply to other validators.
+
+```ts
+import { Elysia } from 'elysia'
 import { z } from 'zod'
-import * as v from 'valibot'
-
-.get('/', ({ params, query }) => params.id, {
-  params: z.object({ id: z.coerce.number() }),
-  query: v.object({ name: v.literal('Lilith') })
-})
-```
-
-Mix validators in same handler.
-
-## Body
-```typescript
-body: t.Object({ name: t.String() })
-```
-
-GET/HEAD: body-parser disabled by default (RFC2616).
-
-### File Upload
-```typescript
-body: t.Object({
-  file: t.File({ format: 'image/*' }),
-  multipleFiles: t.Files()
-})
-// Auto-assumes multipart/form-data
-```
-
-### File (Standard Schema)
-```typescript
-import { fileType } from 'elysia'
-
-body: z.object({
-  file: z.file().refine((file) => fileType(file, 'image/jpeg'))
-})
-```
-
-Use `fileType` for security (validates magic number, not just MIME).
-
-## Query
-```typescript
-query: t.Object({ name: t.String() })
-// /?name=Elysia
-```
-
-Auto-coerces to specified type.
-
-### Arrays
-```typescript
-query: t.Object({ name: t.Array(t.String()) })
-```
-
-Formats supported:
-- **nuqs**: `?name=a,b,c` (comma delimiter)
-- **HTML form**: `?name=a&name=b&name=c` (multiple keys)
-
-## Params
-```typescript
-params: t.Object({ id: t.Number() })
-// /id/1
-```
-
-Auto-inferred as string if schema not provided.
-
-## Headers
-```typescript
-headers: t.Object({ authorization: t.String() })
-```
-
-`additionalProperties: true` by default. Always lowercase keys.
-
-## Cookie
-```typescript
-cookie: t.Cookie({
-  name: t.String()
-}, {
-  secure: true,
-  httpOnly: true
-})
-```
-
-Or use `t.Object`. `additionalProperties: true` by default.
-
-## Response
-```typescript
-response: t.Object({ name: t.String() })
-```
-
-### Per Status
-```typescript
-response: {
-  200: t.Object({ name: t.String() }),
-  400: t.Object({ error: t.String() })
-}
-```
-
-## Error Handling
-
-### Inline Error Property
-```typescript
-body: t.Object({
-  x: t.Number({ error: 'x must be number' })
-})
-```
-
-Or function:
-```typescript
-x: t.Number({
-  error({ errors, type, validation, value }) {
-    return 'Expected x to be number'
-  }
-})
-```
-
-### onError Hook
-```typescript
-.onError(({ code, error }) => {
-  if (code === 'VALIDATION')
-    return error.message // or error.all[0].message
-})
-```
-
-`error.all` - list all error causes. `error.all.find(x => x.path === '/name')` - find specific field.
-
-## Reference Models
-Name + reuse models:
-```typescript
-.model({
-  sign: t.Object({
-    username: t.String(),
-    password: t.String()
-  })
-})
-.post('/sign-in', ({ body }) => body, {
-  body: 'sign',
-  response: 'sign'
-})
-```
-
-Extract to plugin:
-```typescript
-// auth.model.ts
-export const authModel = new Elysia().model({ sign: t.Object({...}) })
-
-// main.ts
-new Elysia().use(authModel).post('/', ..., { body: 'sign' })
-```
-
-### Naming Convention
-Prevent duplicates with namespaces:
-```typescript
-.model({
-  'auth.admin': t.Object({...}),
-  'auth.user': t.Object({...})
-})
-```
-
-Or use `prefix` / `suffix` to rename models in current instance
-```typescript
-.model({ sign: t.Object({...}) })
-.prefix('model', 'auth')
-.post('/', () => '', {
-	body: 'auth.User'
-})
-```
-
-Models with `prefix` will be capitalized.
-
-## TypeScript Types
-```typescript
-const MyType = t.Object({ hello: t.Literal('Elysia') })
-type MyType = typeof MyType.static
-```
-
-Single schema → runtime validation + coercion + TypeScript type + OpenAPI.
-
-## Guard
-Apply schema to multiple handlers. Affects all handlers after definition.
-
-### Basic Usage
-```typescript
-import { Elysia, t } from 'elysia'
 
 new Elysia()
-  .get('/none', ({ query }) => 'hi')
-  .guard({
-    query: t.Object({
-      name: t.String()
-    })
-  })
-  .get('/query', ({ query }) => query)
-  .listen(3000)
+	.get('/users/:id', {
+		params: z.object({ id: z.coerce.number() })
+	}, ({ params }) => params.id)
 ```
 
-Ensures `query.name` string required for all handlers after guard.
+For example, use `z.infer<typeof schema>`, Valibot's `InferOutput`, or ArkType's `typeof schema.infer`.
 
-### Behavior
-| Path          | Response |
-|---------------|----------|
-| /none         | hi       |
-| /none?name=a  | hi       |
-| /query        | error    |
-| /query?name=a | a        |
+## Files
 
-### Precedence
-- Multiple global schemas: latest wins
-- Global vs local: local wins
+`t.File` options include `type`, `minSize`, and `maxSize`. `t.Files` also accepts `minItems` and `maxItems`. Sizes are bytes or strings suffixed with `k` or `m`, using powers of 1,024. Media types accept a string or array, including groups such as `'image'` or `'image/*'`.
 
-### Schema Types
-
-1. override (default)
-Latest schema overrides collided schema.
-```typescript
-.guard({ query: t.Object({ name: t.String() }) })
-.guard({ query: t.Object({ id: t.Number() }) })
-// Only id required, name overridden
-```
-
-2. standalone
-Both schemas run independently. Both validated.
-```typescript
-.guard({ query: t.Object({ name: t.String() }) }, { type: 'standalone' })
-.guard({ query: t.Object({ id: t.Number() }) }, { type: 'standalone' })
-// Both name AND id required
-```
-
-# Typebox Validation (Elysia.t)
-
-Elysia.t = TypeBox with server-side pre-configuration + HTTP-specific types
-
-**TypeBox API mirrors TypeScript syntax** but provides runtime validation
-
-## Basic Types
-
-| TypeBox | TypeScript | Example Value |
-|---------|------------|---------------|
-| `t.String()` | `string` | `"hello"` |
-| `t.Number()` | `number` | `42` |
-| `t.Boolean()` | `boolean` | `true` |
-| `t.Array(t.Number())` | `number[]` | `[1, 2, 3]` |
-| `t.Object({ x: t.Number() })` | `{ x: number }` | `{ x: 10 }` |
-| `t.Null()` | `null` | `null` |
-| `t.Literal(42)` | `42` | `42` |
-
-## Attributes (JSON Schema 7)
+Elysia 2 does not bundle a file detector. Register one before validating `type`; otherwise type-checked uploads fail validation.
 
 ```ts
-// Email format
-t.String({ format: 'email' })
+import { Elysia, t, setFileTypeDetector } from 'elysia'
+import { fileTypeFromBlob } from 'file-type'
 
-// Number constraints
-t.Number({ minimum: 10, maximum: 100 })
-
-// Array constraints
-t.Array(t.Number(), {
-  minItems: 1,  // min items
-  maxItems: 5   // max items
-})
-
-// Object - allow extra properties
-t.Object(
-  { x: t.Number() },
-  { additionalProperties: true }  // default: false
-)
-```
-
-## Common Patterns
-
-### Union (Multiple Types)
-```ts
-t.Union([t.String(), t.Number()])
-// type: string | number
-// values: "Hello" or 123
-```
-
-### Optional (Field Optional)
-```ts
-t.Object({
-  x: t.Number(),
-  y: t.Optional(t.Number())  // can be undefined
-})
-// type: { x: number, y?: number }
-// value: { x: 123 } or { x: 123, y: 456 }
-```
-
-### Partial (All Fields Optional)
-```ts
-t.Partial(t.Object({
-  x: t.Number(),
-  y: t.Number()
-}))
-// type: { x?: number, y?: number }
-// value: {} or { y: 123 } or { x: 1, y: 2 }
-```
-
-## Elysia-Specific Types
-
-### UnionEnum (One of Values)
-```ts
-t.UnionEnum(['rapi', 'anis', 1, true, false])
-```
-
-### File (Single File Upload)
-```ts
-t.File({
-  type: 'image',           // or ['image', 'video']
-  minSize: '1k',           // 1024 bytes
-  maxSize: '5m'            // 5242880 bytes
-})
-```
-
-**File unit suffixes**:
-- `m` = MegaByte (1048576 bytes)
-- `k` = KiloByte (1024 bytes)
-
-### Files (Multiple Files)
-```ts
-t.Files()  // extends File + array
-```
-
-### Cookie (Cookie Jar)
-```ts
-t.Cookie({
-  name: t.String()
-}, {
-  secrets: 'secret-key'  // or ['key1', 'key2'] for rotation
-})
-```
-
-### Nullable (Allow null)
-```ts
-t.Nullable(t.String())
-// type: string | null
-```
-
-### MaybeEmpty (Allow null + undefined)
-```ts
-t.MaybeEmpty(t.String())
-// type: string | null | undefined
-```
-
-### Form (FormData Validation)
-```ts
-t.Form({
-  someValue: t.File()
-})
-// Syntax sugar for t.Object with FormData support
-```
-
-### UInt8Array (Buffer → Uint8Array)
-```ts
-t.UInt8Array()
-// For binary file uploads with arrayBuffer parser
-```
-
-### ArrayBuffer (Buffer → ArrayBuffer)
-```ts
-t.ArrayBuffer()
-// For binary file uploads with arrayBuffer parser
-```
-
-### ObjectString (String → Object)
-```ts
-t.ObjectString()
-// Accepts: '{"x":1}' → parses to { x: 1 }
-// Use in: query string, headers, FormData
-```
-
-### BooleanString (String → Boolean)
-```ts
-t.BooleanString()
-// Accepts: 'true'/'false' → parses to boolean
-// Use in: query string, headers, FormData
-```
-
-### Numeric (String/Number → Number)
-```ts
-t.Numeric()
-// Accepts: '123' or 123 → transforms to 123
-// Use in: path params, query string
-```
-
-## Elysia Behavior Differences from TypeBox
-
-### 1. Optional Behavior
-
-In Elysia, `t.Optional` makes **entire route parameter** optional (not object field):
-
-```ts
-.get('/optional', ({ query }) => query, {
-  query: t.Optional(  // makes query itself optional
-    t.Object({ name: t.String() })
-  )
-})
-```
-
-**Different from TypeBox**: TypeBox uses Optional for object fields only
-
-### 2. Number → Numeric Auto-Conversion
-
-**Route schema only** (not nested objects):
-
-```ts
-.get('/:id', ({ id }) => id, {
-  params: t.Object({
-    id: t.Number()  // ✅ Auto-converts to t.Numeric()
-  }),
-  body: t.Object({
-    id: t.Number()  // ❌ NOT converted (stays t.Number())
-  })
-})
-
-// Outside route schema
-t.Number()  // ❌ NOT converted
-```
-
-**Why**: HTTP headers/query/params always strings. Auto-conversion parses numeric strings.
-
-### 3. Boolean → BooleanString Auto-Conversion
-
-Same as Number → Numeric:
-
-```ts
-.get('/:active', ({ active }) => active, {
-  params: t.Object({
-    active: t.Boolean()  // ✅ Auto-converts to t.BooleanString()
-  }),
-  body: t.Object({
-    active: t.Boolean()  // ❌ NOT converted
-  })
-})
-```
-
-## Usage Pattern
-
-```ts
-import { Elysia, t } from 'elysia'
+setFileTypeDetector(fileTypeFromBlob)
 
 new Elysia()
-  .post('/', ({ body }) => `Hello ${body}`, {
-    body: t.String()  // validates body is string
-  })
-  .listen(3000)
+	.post('/upload', {
+		body: t.Object({
+			file: t.File({ type: ['image/png', 'image/jpeg'], maxSize: '5m' })
+		})
+	}, ({ body }) => ({ name: body.file.name }))
 ```
 
-**Validation flow**:
-1. Request arrives
-2. Schema validates against HTTP body/params/query/headers
-3. If valid → handler executes
-4. If invalid → Error Life Cycle
+For Standard Schema uploads, set `parse: 'formdata'` and validate file content with Elysia's async `fileType()` helper. `file.type` alone is client-supplied metadata. This example includes detector setup:
 
-## Notes
+```ts
+import { Elysia, fileType, setFileTypeDetector } from 'elysia'
+import { fileTypeFromBlob } from 'file-type'
+import { z } from 'zod'
 
-[Inference] Based on docs:
-- TypeBox mirrors TypeScript but adds runtime validation
-- Elysia.t extends TypeBox with HTTP-specific types
-- Auto-conversion (Number→Numeric, Boolean→BooleanString) only for route schemas
-- Use `t.Optional` for optional route params (different from TypeBox behavior)
-- File validation supports unit suffixes ('1k', '5m')
-- ObjectString/BooleanString for parsing strings in query/headers
-- Cookie supports key rotation with array of secrets
+setFileTypeDetector(fileTypeFromBlob)
+
+new Elysia()
+	.post('/upload', {
+		parse: 'formdata',
+		body: z.object({
+			file: z.file().refine((file) => fileType(file, 'image/jpeg'), 'Expected JPEG')
+		})
+	}, ({ body }) => ({ name: body.file.name }))
+```
+
+For raw binary uploads, pair `parse: 'arrayBuffer'` with `body: t.Uint8Array()` or `body: t.ArrayBuffer()`.
+
+## Shared schemas and guards
+
+A route schema replaces the inherited guard schema for the same slot by default; object fields do not merge. `schema: 'merge'` accumulates constraints so both schemas must pass. Guard scope and examples belong in [composition.md](composition.md).
+
+## Models and types
+
+Share schema variables directly. Register them with `.model()` for string references or named OpenAPI components, before the routes that use them.
+
+```ts
+import { Elysia, t, type UnwrapSchema, type UnwrapModels } from 'elysia'
+
+const User = t.Object({ id: t.String(), name: t.String() })
+type User = UnwrapSchema<typeof User>
+
+const ByIdGet = { Params: t.Object({ id: t.String() }), Response: User }
+type ByIdGet = UnwrapModels<typeof ByIdGet>
+
+new Elysia()
+	.model({ 'user.profile': User })
+	.post('/profile', { body: 'user.profile', response: 'user.profile' }, ({ body }) => body)
+```
+
+`ByIdGet.Params` is the schema; `ByIdGet['Params']` is its TypeScript type. See [project structure](project-structure.md) for a feature model convention.
+
+## Type performance
+
+For slow inference, run `tsc --generateTrace trace --noEmit --incremental false` and inspect `trace/trace.json` in Perfetto. If [Eden](eden.md) needs only a sub-app, export that sub-app's type and preserve its URL prefix in the client.

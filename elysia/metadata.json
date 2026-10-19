@@ -1,7 +1,7 @@
 {
-  "version": "1.0.1",
+  "version": "2.0.0",
   "organization": "ElysiaJS",
-  "date": "20 Jan 2026",
-  "abstract": "Create backend with ElysiaJS, a type-safe, high-performance framework.",
+  "date": "17 Oct 2026",
+  "abstract": "Elysia v2 backend guidance, checked against 2.0.0-beta.32.",
   "references": ["https://elysiajs.com/llms.txt"]
 }
